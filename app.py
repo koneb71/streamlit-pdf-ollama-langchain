@@ -6,11 +6,10 @@ from pathlib import Path
 import streamlit as st
 
 from html_templates import css, user_template, bot_template
-from rag import (
+from utils import (
     load_documents,
     split_documents,
-    add_to_weaviate_store,
-    get_conversation_chain,
+    add_to_faiss_vector_store,
 )
 
 
@@ -26,19 +25,24 @@ def handle_userinput(user_question: str):
     Finally, it iterates over the chat history. For each message, it checks if the index is even.
     If it is, it writes the user's message to the interface. If it's not, it writes the bot's message.
     """
-    response = st.session_state.conversation({"question": user_question})
-    st.session_state.chat_history = response["chat_history"]
+    if st.session_state.conversation:
+        response = st.session_state.conversation.invoke(user_question)
+        st.session_state.chat_history += [{"type": "user", "message": user_question}]
+        st.session_state.chat_history += [
+            {"type": "bot", "message": message.page_content} for message in response
+        ]
 
-    for i, message in enumerate(st.session_state.chat_history):
-        if i % 2 == 0:
-            st.write(
-                user_template.replace("{{MSG}}", message.content),
-                unsafe_allow_html=True,
-            )
-        else:
-            st.write(
-                bot_template.replace("{{MSG}}", message.content), unsafe_allow_html=True
-            )
+        for item in st.session_state.chat_history:
+            if item["type"] == "user":
+                st.write(
+                    user_template.replace("{{MSG}}", item["message"]),
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.write(
+                    bot_template.replace("{{MSG}}", item["message"]),
+                    unsafe_allow_html=True,
+                )
 
 
 def save_uploaded_files(pdf_docs):
@@ -97,7 +101,7 @@ def main():
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
-        st.session_state.chat_history = None
+        st.session_state.chat_history = []
 
     st.header("Chat with multiple PDFs :books:")
     user_question = st.text_input("Ask a question about your documents:")
@@ -115,10 +119,9 @@ def main():
 
                 docs = load_documents()
                 chunks = split_documents(docs)
-                vectorstore = add_to_weaviate_store(chunks)
+                vectorstore = add_to_faiss_vector_store(chunks)
 
-                # create conversation chain
-                st.session_state.conversation = get_conversation_chain(vectorstore)
+                st.session_state.conversation = vectorstore
 
                 # delete uploaded files
                 delete_uploaded_files(str(new_dir))

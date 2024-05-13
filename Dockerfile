@@ -17,8 +17,6 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . /app/
 
-RUN chmod +x start.sh
-
 EXPOSE 8501
 
 # Command to run Streamlit development server
